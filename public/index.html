@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#4f46e5" />
+  <meta name="description" content="Aplikasi kasir (POS) sederhana untuk toko pakaian." />
+  <title>POS Pakaian</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👕</text></svg>" />
+  <link rel="stylesheet" href="/styles.css?v=2" />
+</head>
+<body>
+  <!-- ============ LAYAR MASUK (PIN) ============ -->
+  <div id="loginScreen" class="login-screen"></div>
+
+  <div id="app" class="app" hidden>
+
+    <!-- ============ SIDEBAR (khusus admin) ============ -->
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <span class="brand-logo">👕</span>
+        <span class="brand-text">
+          <strong id="brandName">POS Pakaian</strong>
+          <small id="brandSub">Kasir Toko</small>
+        </span>
+      </div>
+
+      <nav class="nav" id="nav">
+        <button class="nav-item is-active" data-route="cashier">
+          <span class="nav-icon">🛒</span><span class="nav-label">Kasir</span>
+        </button>
+        <button class="nav-item" data-route="products">
+          <span class="nav-icon">👚</span><span class="nav-label">Produk</span>
+        </button>
+        <button class="nav-item" data-route="transactions">
+          <span class="nav-icon">🧾</span><span class="nav-label">Transaksi</span>
+        </button>
+        <button class="nav-item" data-route="reports">
+          <span class="nav-icon">📊</span><span class="nav-label">Laporan</span>
+        </button>
+        <button class="nav-item" data-route="settings">
+          <span class="nav-icon">⚙️</span><span class="nav-label">Pengaturan</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-foot">
+        <div class="mini-stat" id="sideToday">
+          <span class="mini-stat-label">Penjualan hari ini</span>
+          <strong class="mini-stat-value">Rp 0</strong>
+        </div>
+        <button class="btn btn-ghost btn-sm btn-block" id="btnLogout" style="margin-top:8px">🚪 Keluar</button>
+      </div>
+    </aside>
+
+    <!-- ============ MAIN ============ -->
+    <div class="main">
+      <header class="topbar">
+        <button class="icon-btn only-mobile" id="btnMenu" title="Menu">☰</button>
+        <div class="topbar-title">
+          <h1 id="pageTitle">Kasir</h1>
+          <p id="pageSub">Pilih produk lalu proses pembayaran</p>
+        </div>
+
+        <div class="topbar-right">
+          <button class="printer-btn" id="btnPrinterTop" type="button" title="Printer Thermal Bluetooth (Android / iOS)">
+            <span class="printer-btn-icon">🖨️</span>
+            <span class="printer-status-dot" id="printerStatusDot"></span>
+            <span class="printer-btn-name" id="printerBtnName">Printer</span>
+          </button>
+
+          <label class="cashier-pick" id="cashierPickWrap">
+            <span>Kasir</span>
+            <select id="cashierSelect"></select>
+          </label>
+
+          <div class="user-chip" id="userChip">
+            <span class="user-chip-avatar" id="userAvatar">👤</span>
+            <span class="user-chip-text">
+              <strong id="userName">-</strong>
+              <small id="userRole">-</small>
+            </span>
+          </div>
+
+          <button class="icon-btn" id="btnLogoutTop" title="Keluar">🚪</button>
+          <div class="clock" id="clock">--:--</div>
+        </div>
+      </header>
+
+      <main class="content" id="view"><!-- view dirender oleh JS --></main>
+    </div>
+  </div>
+
+  <!-- ============ MODAL ============ -->
+  <div class="modal-backdrop" id="modalBackdrop" hidden>
+    <div class="modal" id="modal" role="dialog" aria-modal="true">
+      <header class="modal-head">
+        <h2 id="modalTitle">Judul</h2>
+        <button class="icon-btn" id="modalClose" title="Tutup">✕</button>
+      </header>
+      <div class="modal-body" id="modalBody"></div>
+      <footer class="modal-foot" id="modalFoot"></footer>
+    </div>
+  </div>
+
+  <!-- ============ TOAST ============ -->
+  <div class="toast-wrap" id="toastWrap"></div>
+
+  <!-- ============ STRUK CETAK ============ -->
+  <div class="print-area" id="printArea"></div>
+
+  <script type="module" src="/js/app.js?v=2"></script>
+</body>
+</html>

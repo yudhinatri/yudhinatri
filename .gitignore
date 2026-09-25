@@ -1,0 +1,12 @@
+node_modules/
+data/
+*.log
+.DS_Store
+
+# Rahasia lokal (Redis, dsb.)
+.env
+.env.local
+.env*.local
+
+# Vercel
+.vercel
