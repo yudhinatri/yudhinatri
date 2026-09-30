@@ -235,7 +235,7 @@ function paymentModal() {
 
   on(modal, 'click', '[data-cash]', (e, btn) => {
     const v = btn.dataset.cash;
-    paid = v === 'pas' ? t.total : t.total + Number(v);
+    paid = v === 'pas' ? t.total : Number(v);
     paidInput.value = paid;
     refreshChange();
   });
