@@ -31,7 +31,6 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
-import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -45,7 +44,6 @@ public class MainActivity extends AppCompatActivity {
 
     private WebView webView;
     private ProgressBar progressBar;
-    private SwipeRefreshLayout swipeRefresh;
     private View errorView;
     private TextView tvErrorMessage;
 
@@ -70,12 +68,8 @@ public class MainActivity extends AppCompatActivity {
     private void initViews() {
         webView = findViewById(R.id.webView);
         progressBar = findViewById(R.id.progressBar);
-        swipeRefresh = findViewById(R.id.swipeRefresh);
         errorView = findViewById(R.id.errorView);
         tvErrorMessage = findViewById(R.id.tvErrorMessage);
-
-        swipeRefresh.setColorSchemeResources(R.color.primary, R.color.accent);
-        swipeRefresh.setOnRefreshListener(this::reloadCurrentPage);
 
         findViewById(R.id.btnRetry).setOnClickListener(v -> {
             errorView.setVisibility(View.GONE);
@@ -116,7 +110,6 @@ public class MainActivity extends AppCompatActivity {
                     progressBar.setProgress(newProgress);
                 } else {
                     progressBar.setVisibility(View.GONE);
-                    swipeRefresh.setRefreshing(false);
                 }
             }
 
@@ -149,7 +142,6 @@ public class MainActivity extends AppCompatActivity {
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
                 progressBar.setVisibility(View.GONE);
-                swipeRefresh.setRefreshing(false);
                 errorView.setVisibility(View.GONE);
             }
 
@@ -159,7 +151,6 @@ public class MainActivity extends AppCompatActivity {
                 // Hanya tampilkan error view jika URL utama yang gagal dimuat
                 if (request.isForMainFrame()) {
                     progressBar.setVisibility(View.GONE);
-                    swipeRefresh.setRefreshing(false);
                     errorView.setVisibility(View.VISIBLE);
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                         tvErrorMessage.setText("Gagal memuat: " + error.getDescription());
