@@ -1,5 +1,9 @@
-/* Driver Printer Thermal Bluetooth (BLE) & Serial (SPP) untuk POS Pakaian.
-   Mendukung Android (Chrome, Edge, Samsung Browser) dan iOS (Bluefy / WebBLE / AirPrint). */
+/* Driver Printer Thermal Bluetooth (BLE, Android SPP Native, & Web Serial) untuk POS Pakaian.
+   Mendukung:
+   - Android Native App (via AndroidPOS Bridge - Classic SPP RFCOMM)
+   - Android Browser (Google Chrome, Edge via Web Bluetooth)
+   - iOS (Bluefy / WebBLE via Web Bluetooth & AirPrint Dialog)
+   - Desktop PC (Chrome/Edge via Web Bluetooth & Web Serial / SPP Virtual COM) */
 
 const STORAGE_KEY = 'pos.bluetooth_printer';
 
@@ -22,12 +26,13 @@ export const COMMON_BLE_SERVICES = [
   '0000e781-0000-1000-8000-00805f9b34fb',
 ];
 
-// Deteksi platform sistem operasi
+// Deteksi platform sistem operasi dan ketersediaan Bluetooth
 export function detectPlatform() {
   const ua = navigator.userAgent || '';
   const isIOS = (/iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) && !window.MSStream;
   const isAndroid = /Android/i.test(ua);
-  const isBluetoothSupported = 'bluetooth' in navigator;
+  const isNativeAndroid = Boolean(window.AndroidPOS && typeof window.AndroidPOS.isAndroidApp === 'function' && window.AndroidPOS.isAndroidApp());
+  const isBluetoothSupported = isNativeAndroid || ('bluetooth' in navigator);
   const isSerialSupported = 'serial' in navigator;
 
   let mode = 'desktop';
@@ -38,10 +43,10 @@ export function detectPlatform() {
     os: mode,
     isIOS,
     isAndroid,
+    isNativeAndroid,
     isBluetoothSupported,
     isSerialSupported,
-    // Di iOS, bila bluetooth aktif berarti sedang memakai Bluefy atau WebBLE browser
-    isBluefy: isIOS && isBluetoothSupported,
+    isBluefy: isIOS && ('bluetooth' in navigator),
   };
 }
 
@@ -55,11 +60,30 @@ class BluetoothPrinterService {
     this.serialPort = null;
     this.serialWriter = null;
 
-    this.connectionType = null; // 'bluetooth' | 'serial' | null
+    this.connectionType = null; // 'bluetooth' | 'serial' | 'android_native' | null
     this.isConnecting = false;
     this.listeners = new Set();
 
     this.settings = this.loadSettings();
+
+    // Auto-detect status jika berjalan di Native Android
+    this.checkNativeStatus();
+  }
+
+  isNativeAndroidApp() {
+    return Boolean(window.AndroidPOS && typeof window.AndroidPOS.isAndroidApp === 'function' && window.AndroidPOS.isAndroidApp());
+  }
+
+  checkNativeStatus() {
+    if (this.isNativeAndroidApp()) {
+      try {
+        if (window.AndroidPOS.isPrinterConnected && window.AndroidPOS.isPrinterConnected()) {
+          this.connectionType = 'android_native';
+        }
+      } catch {
+        /* abaikan */
+      }
+    }
   }
 
   loadSettings() {
@@ -128,7 +152,32 @@ class BluetoothPrinterService {
     this.saveSettings({ selectedPrinterId: printerId });
   }
 
+  /**
+   * Mengambil daftar printer Bluetooth yang sudah dipasangkan di HP / browser
+   */
   async getPairedBluetoothDevices() {
+    // 1. Android Native App (mengambil daftar paired / bonded devices dari sistem Android)
+    if (this.isNativeAndroidApp()) {
+      try {
+        const jsonStr = window.AndroidPOS.getBondedDevices();
+        const list = JSON.parse(jsonStr || '[]');
+        if (Array.isArray(list)) {
+          return list
+            .filter((d) => d && d.address && !d.error)
+            .map((d) => ({
+              id: d.address,
+              name: d.name || 'Printer Bluetooth',
+              address: d.address,
+              type: 'android_native',
+            }));
+        }
+      } catch (e) {
+        console.error('Gagal mengambil daftar paired devices Android:', e);
+      }
+      return [];
+    }
+
+    // 2. Browser Chrome / Edge Web Bluetooth
     if (navigator.bluetooth && typeof navigator.bluetooth.getDevices === 'function') {
       try {
         return await navigator.bluetooth.getDevices();
@@ -140,6 +189,13 @@ class BluetoothPrinterService {
   }
 
   isConnected() {
+    if (this.connectionType === 'android_native') {
+      try {
+        return Boolean(window.AndroidPOS && window.AndroidPOS.isPrinterConnected && window.AndroidPOS.isPrinterConnected());
+      } catch {
+        return false;
+      }
+    }
     if (this.connectionType === 'bluetooth') {
       return Boolean(this.device && this.server && this.server.connected && this.characteristic);
     }
@@ -150,6 +206,14 @@ class BluetoothPrinterService {
   }
 
   getDeviceName() {
+    if (this.connectionType === 'android_native') {
+      try {
+        const name = window.AndroidPOS?.getConnectedPrinterName?.();
+        return name || this.settings.lastDeviceName || 'Printer Bluetooth';
+      } catch {
+        return this.settings.lastDeviceName || 'Printer Bluetooth';
+      }
+    }
     if (!this.isConnected()) {
       return this.settings.lastDeviceName || '';
     }
@@ -187,13 +251,107 @@ class BluetoothPrinterService {
   }
 
   /**
-   * Hubungkan printer lewat Web Bluetooth API (BLE)
-   * @param {BluetoothDevice} [targetDevice] Jika sudah ada objek BluetoothDevice
+   * Hubungkan printer di aplikasi Android Native (Classic Bluetooth SPP)
+   */
+  async connectNative(macAddress, deviceName = '') {
+    if (!this.isNativeAndroidApp()) {
+      throw new Error('Aplikasi Android POS tidak terdeteksi');
+    }
+
+    this.isConnecting = true;
+    this.emitChange();
+
+    try {
+      await this.disconnect();
+
+      // Beri jeda sejenak agar status UI terupdate
+      const resJson = await new Promise((resolve) => {
+        setTimeout(() => {
+          try {
+            resolve(window.AndroidPOS.connectPrinter(macAddress));
+          } catch (err) {
+            resolve(JSON.stringify({ success: false, error: err.message }));
+          }
+        }, 60);
+      });
+
+      const res = typeof resJson === 'string' ? JSON.parse(resJson || '{}') : resJson;
+      if (!res || !res.success) {
+        throw new Error(res?.error || 'Gagal menyambungkan ke printer Bluetooth');
+      }
+
+      this.connectionType = 'android_native';
+      this.isConnecting = false;
+
+      const finalName = res.name || deviceName || 'Printer Bluetooth';
+      this.addSavedPrinter({
+        id: macAddress,
+        name: finalName,
+        type: 'android_native',
+      });
+
+      this.saveSettings({
+        printerMode: 'bluetooth',
+        selectedPrinterId: macAddress,
+        lastDeviceId: macAddress,
+        lastDeviceName: finalName,
+      });
+
+      this.emitChange();
+      return { success: true, deviceName: finalName };
+    } catch (err) {
+      this.isConnecting = false;
+      this.emitChange();
+      throw err;
+    }
+  }
+
+  /**
+   * Buka menu pengaturan Bluetooth di HP Android agar kasir dapat memasangkan printer baru
+   */
+  openNativeBluetoothSettings() {
+    if (this.isNativeAndroidApp() && window.AndroidPOS.openBluetoothSettings) {
+      window.AndroidPOS.openBluetoothSettings();
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Hubungkan printer lewat Bluetooth (Otomatis mendeteksi Android Native atau Web Bluetooth BLE)
+   * @param {BluetoothDevice|string} [targetDevice] Jika sudah ada objek BluetoothDevice atau MAC Address
    */
   async connectBluetooth(targetDevice = null) {
+    const platform = detectPlatform();
+
+    // 1. KONEKSI DI ANDROID NATIVE
+    if (platform.isNativeAndroid) {
+      if (typeof targetDevice === 'string') {
+        return await this.connectNative(targetDevice);
+      }
+      if (targetDevice && (targetDevice.id || targetDevice.address)) {
+        return await this.connectNative(targetDevice.id || targetDevice.address, targetDevice.name);
+      }
+
+      // Ambil daftar perangkat yang dipasangkan di HP Android
+      const paired = await this.getPairedBluetoothDevices();
+      if (paired.length === 1) {
+        return await this.connectNative(paired[0].id, paired[0].name);
+      } else if (paired.length > 1) {
+        const target = paired.find((p) => p.id === this.settings.selectedPrinterId) || paired[0];
+        return await this.connectNative(target.id, target.name);
+      } else {
+        // Belum ada perangkat berpasangan di HP
+        this.openNativeBluetoothSettings();
+        throw new Error(
+          'Belum ada printer Bluetooth yang dipasangkan (paired) di HP. Pengaturan Bluetooth HP telah dibuka. Silakan pasangkan printer Anda (PIN 1234 atau 0000), lalu kembali ke aplikasi POS dan pilih printer.'
+        );
+      }
+    }
+
+    // 2. KONEKSI DI BROWSER BIASA (Web Bluetooth API)
     if (!('bluetooth' in navigator)) {
-      const p = detectPlatform();
-      if (p.isIOS) {
+      if (platform.isIOS) {
         throw new Error(
           'Safari di iOS belum mendukung Web Bluetooth secara bawaan. Silakan gunakan browser "Bluefy" (gratis di App Store) untuk koneksi Bluetooth langsung, atau gunakan tombol Cetak Sistem.'
         );
@@ -301,13 +459,20 @@ class BluetoothPrinterService {
   async connectSavedPrinter(printerId) {
     const list = this.getSavedPrinters();
     const item = list.find((p) => p.id === printerId);
+
+    // Jika di Android Native atau tipe android_native
+    if (this.isNativeAndroidApp() || item?.type === 'android_native') {
+      const name = item ? item.name : '';
+      return await this.connectNative(printerId, name);
+    }
+
     if (!item) throw new Error('Perangkat printer tidak ditemukan dalam daftar');
 
     if (item.type === 'serial') {
       return await this.connectSerial();
     }
 
-    // Jika bluetooth, periksa apakah device ada di navigator.bluetooth.getDevices()
+    // Jika bluetooth di Web Bluetooth browser
     const devices = await this.getPairedBluetoothDevices();
     const match = devices.find((d) => d.id === printerId);
     if (match) {
@@ -319,7 +484,7 @@ class BluetoothPrinterService {
   }
 
   /**
-   * Hubungkan printer via Web Serial API (Bluetooth SPP Virtual COM atau USB OTG)
+   * Hubungkan printer via Web Serial API (Bluetooth SPP Virtual COM atau USB OTG di PC)
    */
   async connectSerial(baudRate = 9600) {
     if (!('serial' in navigator)) {
@@ -370,6 +535,18 @@ class BluetoothPrinterService {
   }
 
   async disconnect() {
+    // Putuskan Android Native
+    if (this.connectionType === 'android_native' || this.isNativeAndroidApp()) {
+      try {
+        if (window.AndroidPOS?.disconnectPrinter) {
+          window.AndroidPOS.disconnectPrinter();
+        }
+      } catch {
+        /* abaikan */
+      }
+    }
+
+    // Putuskan Web Bluetooth
     try {
       if (this.device && this.device.gatt && this.device.gatt.connected) {
         this.device.gatt.disconnect();
@@ -378,6 +555,7 @@ class BluetoothPrinterService {
       /* abaikan */
     }
 
+    // Putuskan Serial
     try {
       if (this.serialWriter) {
         this.serialWriter.releaseLock();
@@ -394,7 +572,6 @@ class BluetoothPrinterService {
 
   /**
    * Kirim data biner (Uint8Array) ke printer thermal
-   * Membagi data menjadi paket kecil (chunk) agar tidak membebani buffer printer BLE
    */
   async printData(uint8Array) {
     if (!this.isConnected()) {
@@ -403,6 +580,24 @@ class BluetoothPrinterService {
 
     const data = uint8Array instanceof Uint8Array ? uint8Array : new Uint8Array(uint8Array);
 
+    // 1. JALUR NATIVE ANDROID SPP
+    if (this.connectionType === 'android_native') {
+      let binary = '';
+      const len = data.byteLength;
+      for (let i = 0; i < len; i++) {
+        binary += String.fromCharCode(data[i]);
+      }
+      const base64 = btoa(binary);
+
+      const resJson = window.AndroidPOS.printEscPos(base64);
+      const res = typeof resJson === 'string' ? JSON.parse(resJson || '{}') : resJson;
+      if (!res || !res.success) {
+        throw new Error(res?.error || 'Gagal mengirim data cetak ke printer');
+      }
+      return true;
+    }
+
+    // 2. JALUR WEB BLUETOOTH (BLE)
     if (this.connectionType === 'bluetooth') {
       const char = this.characteristic;
       const CHUNK_SIZE = 60; // Ukuran paket aman untuk BLE thermal printer portable
@@ -415,12 +610,12 @@ class BluetoothPrinterService {
         } else {
           await char.writeValueWithResponse(chunk);
         }
-        // Jeda singkat antar chunk untuk mencegah buffer overflow pada printer
         await new Promise((r) => setTimeout(r, 20));
       }
       return true;
     }
 
+    // 3. JALUR WEB SERIAL
     if (this.connectionType === 'serial') {
       await this.serialWriter.write(data);
       return true;

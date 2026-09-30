@@ -10,14 +10,55 @@ export function openPrinterModal(initialTrx = null) {
   const body = document.createElement('div');
   body.className = 'printer-modal-content';
 
-  function renderBody() {
+  async function renderBody() {
     const connected = printerService.isConnected();
     const currentName = printerService.getDeviceName();
     const currentSettings = printerService.settings;
     const platform = detectPlatform();
     const savedPrinters = printerService.getSavedPrinters();
-    const selectedId = currentSettings.selectedPrinterId || (savedPrinters[0]?.id) || '';
-    const selectedPrinter = savedPrinters.find((p) => p.id === selectedId);
+
+    // Ambil daftar perangkat Bluetooth yang sudah dipasangkan di sistem HP / Android
+    let nativePairedDevices = [];
+    if (platform.isNativeAndroid) {
+      try {
+        nativePairedDevices = await printerService.getPairedBluetoothDevices();
+      } catch (err) {
+        console.error('Error fetching paired devices:', err);
+      }
+    }
+
+    // Gabungkan printer tersimpan dengan perangkat Bluetooth sistem Android
+    const allOptionsMap = new Map();
+
+    // 1. Masukkan printer tersimpan sebelumnya
+    savedPrinters.forEach((p) => {
+      allOptionsMap.set(p.id, {
+        id: p.id,
+        name: p.name,
+        type: p.type || 'bluetooth',
+        source: 'saved',
+      });
+    });
+
+    // 2. Masukkan perangkat bluetooth yang sudah dipasangkan di HP Android
+    nativePairedDevices.forEach((dev) => {
+      if (allOptionsMap.has(dev.id)) {
+        const item = allOptionsMap.get(dev.id);
+        item.name = dev.name; // Perbarui nama terbaru
+        item.type = 'android_native';
+      } else {
+        allOptionsMap.set(dev.id, {
+          id: dev.id,
+          name: dev.name,
+          type: 'android_native',
+          source: 'android_system',
+        });
+      }
+    });
+
+    const combinedList = Array.from(allOptionsMap.values());
+    const selectedId = currentSettings.selectedPrinterId || (combinedList[0]?.id) || '';
+    const selectedPrinter = combinedList.find((p) => p.id === selectedId);
 
     body.innerHTML = `
       <!-- 1. PILIH MODE KONEKSI -->
@@ -25,7 +66,7 @@ export function openPrinterModal(initialTrx = null) {
         <label style="font-size:12.5px;font-weight:700;margin-bottom:6px;display:block">
           1. Mode Koneksi Printer
         </label>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));gap:8px">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));gap:8px">
           <label style="cursor:pointer;padding:8px 10px;border:1px solid ${currentSettings.printerMode === 'bluetooth' ? 'var(--brand)' : 'var(--border)'};border-radius:8px;display:flex;align-items:center;gap:6px;background:${currentSettings.printerMode === 'bluetooth' ? 'var(--brand-soft)' : 'var(--surface)'};font-size:12px">
             <input type="radio" name="modalPrinterMode" value="bluetooth" ${currentSettings.printerMode === 'bluetooth' ? 'checked' : ''} />
             <span style="font-weight:600;color:${currentSettings.printerMode === 'bluetooth' ? 'var(--brand)' : 'inherit'}">🔵 Bluetooth</span>
@@ -47,33 +88,53 @@ export function openPrinterModal(initialTrx = null) {
       <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin-bottom:14px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:6px">
           <label style="font-size:12.5px;font-weight:700">2. Pilih Perangkat Printer</label>
-          <span style="font-size:11px;color:var(--text-3)">${savedPrinters.length} tersimpan</span>
+          <span style="font-size:11px;color:var(--text-3)">${combinedList.length} perangkat ditemukan</span>
         </div>
 
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <select class="select" id="modalSelectPrinter" style="flex:1;min-width:180px;font-size:12.5px;font-weight:600">
             ${
-              savedPrinters.length === 0
-                ? `<option value="">-- Belum ada printer tersimpan --</option>`
-                : savedPrinters
+              combinedList.length === 0
+                ? `<option value="">-- Belum ada printer ditemukan --</option>`
+                : combinedList
                     .map(
                       (p) => `
                     <option value="${p.id}" ${p.id === selectedId ? 'selected' : ''}>
-                      ${p.type === 'bluetooth' ? '🔵' : '🔌'} ${esc(p.name)} ${connected && p.name === currentName ? '— [Terhubung]' : ''}
+                      ${p.type === 'serial' ? '🔌' : '🔵'} ${esc(p.name)} ${connected && (p.name === currentName || p.id === selectedId) ? '— [Terhubung]' : ''}
                     </option>`,
                     )
                     .join('')
             }
-            <option value="__add_bt__">➕ Cari Bluetooth Baru...</option>
+            ${
+              platform.isNativeAndroid
+                ? `
+                  <option value="__refresh_bt__">🔄 Segarkan Daftar Bluetooth HP</option>
+                  <option value="__open_bt_settings__">⚙️ Pasangkan Printer Baru di HP...</option>
+                `
+                : `
+                  <option value="__add_bt__">➕ Cari Bluetooth Baru...</option>
+                `
+            }
             ${platform.isSerialSupported ? `<option value="__add_serial__">➕ Pilih Serial Baru...</option>` : ''}
           </select>
 
           <button class="btn btn-sm" id="btnModalConnectSel">
             ${connected ? '⚡ Sambungkan Ulang' : '⚡ Sambungkan'}
           </button>
-          <button class="btn btn-sm btn-outline" id="btnModalScanBt">
-            🔍 Cari Baru
-          </button>
+
+          ${
+            platform.isNativeAndroid
+              ? `
+                <button class="btn btn-sm btn-outline" id="btnOpenBtSettings" title="Buka menu pengaturan Bluetooth HP untuk pairing printer baru">
+                  ⚙️ Bluetooth HP
+                </button>
+              `
+              : `
+                <button class="btn btn-sm btn-outline" id="btnModalScanBt">
+                  🔍 Cari Baru
+                </button>
+              `
+          }
         </div>
 
         <!-- Detail status printer -->
@@ -86,7 +147,7 @@ export function openPrinterModal(initialTrx = null) {
                 <span class="badge ${connected ? 'badge-ok' : ''}">${connected ? '● Terhubung' : 'Terputus'}</span>
               </div>
               <div style="font-size:11px;color:var(--text-2)">
-                ${connected ? `Format ${currentSettings.paperWidth}mm • Siap cetak` : 'Klik "Sambungkan" untuk mengaktifkan'}
+                ${connected ? `Format ${currentSettings.paperWidth}mm • Siap cetak` : 'Pilih printer lalu klik "Sambungkan"'}
               </div>
             </div>
           </div>
@@ -94,7 +155,7 @@ export function openPrinterModal(initialTrx = null) {
           <div style="display:flex;gap:6px">
             ${connected ? `<button class="btn btn-sm" id="btnTestPrint">🧾 Test Cetak</button>` : ''}
             ${connected ? `<button class="btn btn-ghost btn-sm danger" id="btnDisconnect">❌ Putuskan</button>` : ''}
-            ${selectedPrinter && !connected ? `<button class="btn btn-ghost btn-sm" id="btnModalDelPrinter" title="Hapus dari daftar">🗑</button>` : ''}
+            ${selectedPrinter && !connected ? `<button class="btn btn-ghost btn-sm" id="btnModalDelPrinter" title="Hapus dari riwayat">🗑</button>` : ''}
           </div>
         </div>
       </div>
@@ -146,19 +207,22 @@ export function openPrinterModal(initialTrx = null) {
       <!-- Panduan Singkat -->
       <div style="padding:10px 12px;background:var(--brand-soft);border-radius:var(--radius);border:1px solid #c7d2fe;font-size:11.5px;line-height:1.5;color:#374151">
         ${
-          platform.isIOS
+          platform.isNativeAndroid
+            ? `<strong>📱 Info Aplikasi POS Android:</strong> Mendukung semua printer thermal Bluetooth (Panda, Eppos, Iware, Bellav, Zjiang, Goojprt, dll).<br/>
+               Cukup pasangkan printer di <strong>Bluetooth HP</strong> (PIN biasanya <em>1234</em> atau <em>0000</em>), lalu pilih printer di menu atas dan klik <strong>⚡ Sambungkan</strong>.`
+            : platform.isIOS
             ? `<strong>🍎 Info iOS (iPhone/iPad):</strong> Gunakan browser <strong>Bluefy</strong> di App Store untuk koneksi Bluetooth langsung, atau pilih mode <em>Dialog Sistem / AirPrint</em>.`
             : platform.isAndroid
-            ? `<strong>📱 Info Android:</strong> Pastikan <strong>Bluetooth</strong> dan <strong>Lokasi (GPS)</strong> aktif sebelum mencari printer.`
+            ? `<strong>📱 Info Android Browser:</strong> Pastikan <strong>Bluetooth</strong> dan <strong>Lokasi (GPS)</strong> aktif sebelum mencari printer.`
             : `<strong>💻 Info Komputer:</strong> Didukung di Chrome/Edge via Bluetooth atau Port Serial/SPP.`
         }
       </div>
     `;
 
-    bindActions();
+    bindActions(combinedList);
   }
 
-  function bindActions() {
+  function bindActions(combinedList = []) {
     // Mode radio
     const modeRadios = body.querySelectorAll('input[name="modalPrinterMode"]');
     modeRadios.forEach((r) => {
@@ -173,7 +237,14 @@ export function openPrinterModal(initialTrx = null) {
     if (selPrinter) {
       selPrinter.addEventListener('change', async (e) => {
         const val = e.target.value;
-        if (val === '__add_bt__') {
+        if (val === '__open_bt_settings__') {
+          printerService.openNativeBluetoothSettings();
+          toast('Silakan pasangkan printer di Pengaturan Bluetooth HP, lalu kembali ke aplikasi', 'info', 5000);
+          renderBody();
+        } else if (val === '__refresh_bt__') {
+          toast('Memperbarui daftar Bluetooth...', 'info', 1500);
+          renderBody();
+        } else if (val === '__add_bt__') {
           try {
             const res = await printerService.connectBluetooth();
             toast(`Printer ${res.deviceName} terhubung`, 'ok');
@@ -190,7 +261,11 @@ export function openPrinterModal(initialTrx = null) {
           }
           renderBody();
         } else if (val) {
+          const match = combinedList.find((p) => p.id === val);
           printerService.selectPrinter(val);
+          if (match) {
+            printerService.saveSettings({ lastDeviceName: match.name });
+          }
           renderBody();
         }
       });
@@ -203,8 +278,8 @@ export function openPrinterModal(initialTrx = null) {
         btnConnectSel.disabled = true;
         btnConnectSel.textContent = '⏳ Menghubungkan...';
         try {
-          const targetId = printerService.settings.selectedPrinterId;
-          if (targetId) {
+          const targetId = printerService.settings.selectedPrinterId || (selPrinter?.value);
+          if (targetId && !targetId.startsWith('__')) {
             await printerService.connectSavedPrinter(targetId);
           } else {
             await printerService.connectBluetooth();
@@ -212,14 +287,23 @@ export function openPrinterModal(initialTrx = null) {
           toast('Printer berhasil tersambung', 'ok');
           renderBody();
         } catch (err) {
-          toast(err.message, 'err', 4500);
+          toast(err.message, 'err', 5000);
           btnConnectSel.disabled = false;
           btnConnectSel.textContent = '⚡ Sambungkan';
         }
       });
     }
 
-    // Tombol cari Bluetooth baru
+    // Tombol buka pengaturan Bluetooth HP (Android Native)
+    const btnOpenBt = $('#btnOpenBtSettings', body);
+    if (btnOpenBt) {
+      btnOpenBt.addEventListener('click', () => {
+        printerService.openNativeBluetoothSettings();
+        toast('Buka Bluetooth HP untuk memasangkan printer baru (PIN 1234/0000)', 'info', 4000);
+      });
+    }
+
+    // Tombol cari Bluetooth baru (Browser)
     const btnScan = $('#btnModalScanBt', body);
     if (btnScan) {
       btnScan.addEventListener('click', async () => {
@@ -244,7 +328,7 @@ export function openPrinterModal(initialTrx = null) {
         const targetId = printerService.settings.selectedPrinterId;
         if (targetId) {
           printerService.removeSavedPrinter(targetId);
-          toast('Printer dihapus dari daftar', 'info');
+          toast('Printer dihapus dari riwayat', 'info');
           renderBody();
         }
       });

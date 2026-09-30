@@ -10,3 +10,15 @@ data/
 
 # Vercel
 .vercel
+
+# Android & IDE
+.idea/
+*.iml
+.gradle/
+build/
+android/.gradle/
+android/.idea/
+android/app/build/
+android/local.properties
+android/*.iml
+android/app/*.iml

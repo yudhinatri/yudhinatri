@@ -91,27 +91,47 @@ export async function printBluetoothReceipt(trx, settings = {}) {
 export async function printReceipt(trx, settings = {}) {
   const mode = printerService.settings.printerMode || 'bluetooth';
 
-  if (mode !== 'system' && printerService.isConnected()) {
-    try {
-      toast(`Mencetak ke ${printerService.getDeviceName()}...`, 'info', 2000);
-      await printBluetoothReceipt(trx, settings);
-      toast('Struk berhasil dicetak', 'ok');
-      return true;
-    } catch (err) {
-      toast(`Gagal mencetak Bluetooth: ${err.message}. Mencoba cetak sistem...`, 'warn', 4000);
-      printBrowserReceipt(trx, settings);
-      return false;
+  if (mode !== 'system') {
+    // Jika belum terhubung, tapi ada printer tersimpan & berjalan di Android Native: coba sambungkan otomatis
+    if (!printerService.isConnected() && printerService.settings.selectedPrinterId && printerService.isNativeAndroidApp()) {
+      try {
+        toast('Menghubungkan ke printer...', 'info', 1500);
+        await printerService.connectSavedPrinter(printerService.settings.selectedPrinterId);
+      } catch (e) {
+        console.warn('Auto connect printer failed:', e);
+      }
     }
-  } else {
-    printBrowserReceipt(trx, settings);
-    return false;
+
+    if (printerService.isConnected()) {
+      try {
+        toast(`Mencetak ke ${printerService.getDeviceName()}...`, 'info', 2000);
+        await printBluetoothReceipt(trx, settings);
+        toast('Struk berhasil dicetak', 'ok');
+        return true;
+      } catch (err) {
+        toast(`Gagal mencetak Bluetooth: ${err.message}. Mencoba cetak sistem...`, 'warn', 4000);
+        printBrowserReceipt(trx, settings);
+        return false;
+      }
+    }
   }
+
+  printBrowserReceipt(trx, settings);
+  return false;
 }
 
 /**
  * Cetak struk pengujian (test print) ke printer thermal
  */
 export async function printTestReceipt(settings = {}) {
+  if (!printerService.isConnected() && printerService.settings.selectedPrinterId && printerService.isNativeAndroidApp()) {
+    try {
+      await printerService.connectSavedPrinter(printerService.settings.selectedPrinterId);
+    } catch {
+      /* abaikan */
+    }
+  }
+
   if (!printerService.isConnected()) {
     throw new Error('Printer belum terhubung.');
   }
@@ -119,3 +139,4 @@ export async function printTestReceipt(settings = {}) {
   const data = buildTestReceiptCommands(settings, opts);
   await printerService.printData(data);
 }
+

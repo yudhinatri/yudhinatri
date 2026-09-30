@@ -49,6 +49,7 @@ public class MainActivity extends AppCompatActivity {
 
     private SharedPreferences prefs;
     private long lastBackPressTime = 0;
+    private BluetoothPrinterManager printerManager;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -56,6 +57,7 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        printerManager = new BluetoothPrinterManager(this, this);
 
         initViews();
         setupWebView();
@@ -100,7 +102,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         // Bridge JS ke Android
-        webView.addJavascriptInterface(new WebAppInterface(this, this), "AndroidPOS");
+        webView.addJavascriptInterface(new WebAppInterface(this, this, printerManager), "AndroidPOS");
 
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
@@ -311,6 +313,9 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
+        if (printerManager != null) {
+            printerManager.destroy();
+        }
         if (webView != null) {
             webView.destroy();
         }

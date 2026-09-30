@@ -124,7 +124,16 @@ function printerSettingsCardHTML() {
                     )
                     .join('')
             }
-            <option value="__add_bt__">➕ Cari & Pilih Printer Bluetooth Baru...</option>
+            ${
+              platform.isNativeAndroid
+                ? `
+                  <option value="__refresh_bt__">🔄 Segarkan Daftar Bluetooth HP</option>
+                  <option value="__open_bt_settings__">⚙️ Pasangkan Printer Baru di HP...</option>
+                `
+                : `
+                  <option value="__add_bt__">➕ Cari & Pilih Printer Bluetooth Baru...</option>
+                `
+            }
             ${platform.isSerialSupported ? `<option value="__add_serial__">➕ Pilih Port Serial / SPP Baru...</option>` : ''}
           </select>
 
@@ -132,9 +141,19 @@ function printerSettingsCardHTML() {
             ${isConn ? '⚡ Sambungkan Ulang' : '⚡ Sambungkan Printer'}
           </button>
 
-          <button class="btn btn-outline" id="btnScanNewBt">
-            🔍 Cari Bluetooth Baru
-          </button>
+          ${
+            platform.isNativeAndroid
+              ? `
+                <button class="btn btn-outline" id="btnOpenBtSettingsPage" title="Buka pengaturan Bluetooth HP untuk pairing printer baru">
+                  ⚙️ Bluetooth HP
+                </button>
+              `
+              : `
+                <button class="btn btn-outline" id="btnScanNewBt">
+                  🔍 Cari Bluetooth Baru
+                </button>
+              `
+          }
         </div>
 
         <!-- Kartu info printer yang dipilih saat ini -->
@@ -726,7 +745,14 @@ export function settingsView(root) {
     if (selPrinter) {
       selPrinter.addEventListener('change', async (e) => {
         const val = e.target.value;
-        if (val === '__add_bt__') {
+        if (val === '__open_bt_settings__') {
+          printerService.openNativeBluetoothSettings();
+          toast('Silakan pasangkan printer di Pengaturan Bluetooth HP, lalu kembali ke aplikasi', 'info', 5000);
+          refreshPrinterCard();
+        } else if (val === '__refresh_bt__') {
+          toast('Memperbarui daftar Bluetooth...', 'info', 1500);
+          refreshPrinterCard();
+        } else if (val === '__add_bt__') {
           try {
             const res = await printerService.connectBluetooth();
             toast(`Printer ${res.deviceName} terhubung`, 'ok');
@@ -746,6 +772,15 @@ export function settingsView(root) {
           printerService.selectPrinter(val);
           refreshPrinterCard();
         }
+      });
+    }
+
+    // Tombol Buka Bluetooth HP (Android Native)
+    const btnOpenBtPage = $('#btnOpenBtSettingsPage', root);
+    if (btnOpenBtPage) {
+      btnOpenBtPage.addEventListener('click', () => {
+        printerService.openNativeBluetoothSettings();
+        toast('Buka Bluetooth HP untuk memasangkan printer baru (PIN 1234/0000)', 'info', 4000);
       });
     }
 
