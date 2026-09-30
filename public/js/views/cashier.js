@@ -14,7 +14,47 @@ import { printerService } from '../bluetoothPrinter.js';
 import { openPrinterModal } from './printerModal.js';
 
 const METODE = ['cash', 'qris', 'transfer', 'debit', 'ewallet'];
-const QUICK_CASH = [50000, 100000, 150000, 200000, 300000, 500000];
+
+/**
+ * Pilihan uang cepat dinamis berdasarkan total belanja.
+ * Semua opsi disesuaikan di atas atau sama dengan total belanja agar tidak pernah minus.
+ */
+function getQuickCashOptions(total) {
+  if (total <= 0) return [50000, 100000, 200000, 500000];
+
+  const suggestions = new Set();
+
+  // 1. Kelipatan 10.000 berikutnya (jika total tidak bulat 10.000)
+  const ceil10k = Math.ceil(total / 10000) * 10000;
+  if (ceil10k > total) suggestions.add(ceil10k);
+
+  // 2. Kelipatan 20.000 berikutnya
+  const ceil20k = Math.ceil(total / 20000) * 20000;
+  if (ceil20k > total) suggestions.add(ceil20k);
+
+  // 3. Kelipatan 50.000 berikutnya
+  const ceil50k = Math.ceil(total / 50000) * 50000;
+  if (ceil50k > total) suggestions.add(ceil50k);
+
+  // 4. Kelipatan 100.000 berikutnya
+  const ceil100k = Math.ceil(total / 100000) * 100000;
+  if (ceil100k > total) suggestions.add(ceil100k);
+
+  // 5. Tambahkan nominal kelipatan di atasnya agar ada variasi pecahan besar
+  let next = ceil100k > total ? ceil100k : ceil50k;
+  if (next <= total) next = (Math.floor(total / 50000) + 1) * 50000;
+
+  const step = next >= 200000 ? 100000 : 50000;
+  while (suggestions.size < 5) {
+    next += step;
+    suggestions.add(next);
+  }
+
+  return Array.from(suggestions)
+    .filter((v) => v > total)
+    .sort((a, b) => a - b)
+    .slice(0, 5);
+}
 
 let localOrderDiscount = 0;
 
@@ -155,6 +195,7 @@ function paymentModal() {
   const t = cartTotals(localOrderDiscount);
   let method = 'cash';
   let paid = t.total;
+  const quickOptions = getQuickCashOptions(t.total);
 
   const body = document.createElement('div');
   body.innerHTML = `
@@ -179,8 +220,8 @@ function paymentModal() {
         <label>Uang diterima</label>
         <input class="input" id="payPaid" type="number" min="0" inputmode="numeric" value="${paid}" style="font-size:17px;font-weight:700" />
         <div class="quick-cash" id="quickCash">
-          ${QUICK_CASH.map((v) => `<button data-cash="${v}">${angka(v)}</button>`).join('')}
-          <button data-cash="pas">Uang pas</button>
+          <button class="is-active" data-cash="pas">Uang pas (${angka(t.total)})</button>
+          ${quickOptions.map((v) => `<button data-cash="${v}">${angka(v)}</button>`).join('')}
         </div>
       </div>
       <div class="change-box" id="changeBox">
@@ -211,6 +252,14 @@ function paymentModal() {
   const changeVal = $('#changeVal', modal);
   const cashBox = $('#cashBox', modal);
 
+  const updateActiveCashBtn = () => {
+    $$('[data-cash]', modal).forEach((b) => {
+      const v = b.dataset.cash;
+      const isMatch = v === 'pas' ? paid === t.total : Number(v) === paid;
+      b.classList.toggle('is-active', isMatch);
+    });
+  };
+
   const refreshChange = () => {
     const diff = paid - t.total;
     const kurang = diff < 0;
@@ -222,6 +271,7 @@ function paymentModal() {
 
   paidInput.addEventListener('input', () => {
     paid = Number(paidInput.value) || 0;
+    updateActiveCashBtn();
     refreshChange();
   });
 
@@ -230,6 +280,7 @@ function paymentModal() {
     $$('[data-method]', modal).forEach((b) => b.classList.toggle('is-active', b.dataset.method === method));
     cashBox.hidden = method !== 'cash';
     paid = method === 'cash' ? Number(paidInput.value) || 0 : t.total;
+    updateActiveCashBtn();
     refreshChange();
   });
 
@@ -237,6 +288,7 @@ function paymentModal() {
     const v = btn.dataset.cash;
     paid = v === 'pas' ? t.total : Number(v);
     paidInput.value = paid;
+    updateActiveCashBtn();
     refreshChange();
   });
 

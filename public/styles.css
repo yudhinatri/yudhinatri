@@ -803,6 +803,7 @@ table.data .actions { display: flex; gap: 4px; justify-content: flex-end; }
   font-variant-numeric: tabular-nums;
 }
 .quick-cash button:hover { border-color: var(--brand); color: var(--brand); background: var(--brand-soft); }
+.quick-cash button.is-active { border-color: var(--brand); background: var(--brand-soft); color: var(--brand-dark); font-weight: 700; box-shadow: 0 0 0 2px rgba(79, 70, 229, .15); }
 
 .change-box {
   display: flex;
