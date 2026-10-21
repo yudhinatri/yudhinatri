@@ -17,6 +17,10 @@ git branch -M main
 echo Remote repository: https://github.com/yudhinatri/yudhinatri.git
 git remote set-url origin https://github.com/yudhinatri/yudhinatri.git 2>nul || git remote add origin https://github.com/yudhinatri/yudhinatri.git
 
+echo Menyiapkan file dan membuat commit...
+git add .
+git diff-index --quiet HEAD || git commit -m "feat: tambahkan format titik ribuan pada nominal diskon"
+
 echo.
 echo ================================================================
 echo Sedang melakukan Git Push ke branch main...

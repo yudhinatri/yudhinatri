@@ -9,6 +9,50 @@ export const angka = (n) =>
 /** Rp 115.000 -> "115000" untuk input number mentah. */
 export const numberOnly = (n) => String(Math.round(Number(n) || 0));
 
+/** Mengurai teks angka dengan pemisah ribuan (titik/koma) menjadi integer murni. */
+export const parseAngka = (v) => {
+  const digits = String(v ?? '').replace(/\D/g, '');
+  return digits ? parseInt(digits, 10) : 0;
+};
+
+/**
+ * Format input angka dengan pemisah ribuan titik (id-ID) saat pengguna mengetik,
+ * sambil menjaga posisi kursor agar tetap natural.
+ */
+export const formatAngkaInput = (input) => {
+  const raw = input.value;
+  const selStart = input.selectionStart ?? raw.length;
+  const digitsBefore = raw.slice(0, selStart).replace(/\D/g, '').length;
+
+  const clean = raw.replace(/\D/g, '');
+  if (!clean) {
+    input.value = '';
+    return 0;
+  }
+
+  const num = parseInt(clean, 10);
+  const formatted = angka(num);
+  input.value = formatted;
+
+  // Hitung kembali posisi kursor berdasarkan jumlah digit sebelum kursor
+  let newPos = formatted.length;
+  let count = 0;
+  for (let i = 0; i < formatted.length; i++) {
+    if (/\d/.test(formatted[i])) {
+      count++;
+      if (count === digitsBefore) {
+        newPos = i + 1;
+        break;
+      }
+    }
+  }
+  if (digitsBefore === 0) newPos = 0;
+  try {
+    input.setSelectionRange(newPos, newPos);
+  } catch {}
+  return num;
+};
+
 export const tanggalPanjang = (iso) => {
   if (!iso) return '-';
   const d = new Date(iso);
@@ -73,8 +117,8 @@ export const IKON_METODE = {
 
 /* ------------------------------ DOM helper ------------------------------ */
 
-export const $ = (sel, root = document) => root.querySelector(sel);
-export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
+export const $ = (sel, root = (typeof document !== 'undefined' ? document : null)) => root?.querySelector(sel);
+export const $$ = (sel, root = (typeof document !== 'undefined' ? document : null)) => (root ? [...root.querySelectorAll(sel)] : []);
 
 /** Escape teks agar aman dimasukkan ke innerHTML. */
 export const esc = (s) =>

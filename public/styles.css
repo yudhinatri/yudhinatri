@@ -555,8 +555,81 @@ table.data .actions { display: flex; gap: 4px; justify-content: flex-end; }
 .sum-row.total { font-size: 17px; font-weight: 800; padding-top: 8px; margin-top: 6px; border-top: 1px dashed var(--border-strong); }
 .sum-row.total span:last-child { color: var(--brand-dark); }
 
-.disc-row { display: flex; gap: 8px; align-items: center; margin: 6px 0; }
-.disc-row .input { padding: 6px 9px; font-size: 12.5px; }
+.disc-box { margin: 8px 0 6px; }
+.disc-row { display: flex; gap: 8px; align-items: center; }
+.disc-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+}
+.disc-prefix {
+  position: absolute;
+  left: 9px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-3);
+  pointer-events: none;
+}
+.disc-input-wrap .input {
+  width: 100%;
+  padding: 6px 26px 6px 28px;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.disc-clear {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--border-strong);
+  color: var(--surface);
+  font-size: 10px;
+  font-weight: bold;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+  transition: background .12s;
+}
+.disc-clear:hover { background: var(--danger); }
+.quick-disc {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+}
+.quick-disc-btn {
+  padding: 3px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: all .12s;
+}
+.quick-disc-btn:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+  background: var(--brand-soft);
+}
+.quick-disc-btn.is-active {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  color: var(--brand-dark);
+  font-weight: 700;
+  box-shadow: 0 0 0 1px var(--brand);
+}
 
 /* ============================ LAYAR MASUK =============================== */
 

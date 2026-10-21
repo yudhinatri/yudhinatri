@@ -6,7 +6,7 @@ import {
   cartTotals, filteredProducts, productById, refreshProducts, refreshSummary, emit,
 } from '../store.js';
 import {
-  $, $$, esc, rupiah, angka, on, debounce, LABEL_METODE, IKON_METODE,
+  $, $$, esc, rupiah, angka, parseAngka, formatAngkaInput, on, debounce, LABEL_METODE, IKON_METODE,
 } from '../utils.js';
 import { receiptHTML, printReceipt, printBrowserReceipt, printBluetoothReceipt } from '../receipt.js';
 import { openModal, closeModal, toast, confirmDialog } from '../ui.js';
@@ -173,15 +173,26 @@ function renderCart(root) {
       <div class="sum-row muted"><span>Subtotal</span><span>${rupiah(t.subtotal)}</span></div>
       ${t.lineDiscount ? `<div class="sum-row muted"><span>Diskon item</span><span>-${rupiah(t.lineDiscount)}</span></div>` : ''}
 
-      <div class="disc-row">
-        <span style="font-size:12px;color:var(--text-2);font-weight:600">Diskon nota</span>
-        <input class="input" id="orderDisc" type="number" min="0" inputmode="numeric" placeholder="0"
-               value="${localOrderDiscount || ''}" style="text-align:right" />
+      <div class="disc-box">
+        <div class="disc-row">
+          <span style="font-size:12px;color:var(--text-2);font-weight:600">Diskon nota</span>
+          <div class="disc-input-wrap">
+            <span class="disc-prefix">Rp</span>
+            <input class="input" id="orderDisc" type="text" inputmode="numeric" placeholder="0"
+                   value="${localOrderDiscount ? angka(localOrderDiscount) : ''}" autocomplete="off" />
+            <button type="button" class="disc-clear" id="btnOrderDiscClear" title="Hapus diskon" style="${localOrderDiscount ? '' : 'display:none'}">✕</button>
+          </div>
+        </div>
+        <div class="quick-disc" id="quickDisc">
+          ${[10000, 20000, 50000, 100000, 200000]
+            .map((v) => `<button type="button" class="quick-disc-btn ${localOrderDiscount === v ? 'is-active' : ''}" data-disc="${v}">${angka(v)}</button>`)
+            .join('')}
+        </div>
       </div>
 
       ${t.serviceCharge ? `<div class="sum-row muted"><span>Biaya layanan</span><span>${rupiah(t.serviceCharge)}</span></div>` : ''}
 
-      <div class="sum-row total"><span>Total</span><span>${rupiah(t.total)}</span></div>
+      <div class="sum-row total"><span>Total</span><span id="cartTotalVal">${rupiah(t.total)}</span></div>
 
       <button class="btn btn-lg btn-block" id="btnPay" style="margin-top:12px" ${state.cart.length ? '' : 'disabled'}>
         💳 Bayar Sekarang
@@ -200,7 +211,7 @@ function paymentModal() {
   const body = document.createElement('div');
   body.innerHTML = `
     <div class="pay-total">
-      <small>Total yang harus dibayar</small>
+      <small>Total yang harus dibayar${t.discount ? ` (Diskon: -${rupiah(t.discount)})` : ''}</small>
       <strong id="payTotal">${rupiah(t.total)}</strong>
     </div>
 
@@ -455,9 +466,65 @@ export function cashierView(root) {
     setQty(input.dataset.qty, input.value);
   });
 
-  on(root, 'change', '#orderDisc', (e) => {
-    localOrderDiscount = Math.max(0, Number(e.target.value) || 0);
+  const updateCartSummary = () => {
+    const t = cartTotals(localOrderDiscount);
+    const cartTotalVal = $('#cartTotalVal', root);
+    if (cartTotalVal) cartTotalVal.textContent = rupiah(t.total);
+
+    $$('[data-disc]', root).forEach((b) => {
+      b.classList.toggle('is-active', Number(b.dataset.disc) === localOrderDiscount);
+    });
+
+    const clearBtn = $('#btnOrderDiscClear', root);
+    if (clearBtn) {
+      clearBtn.style.display = localOrderDiscount ? 'inline-flex' : 'none';
+    }
+  };
+
+  on(root, 'input', '#orderDisc', (e, input) => {
+    localOrderDiscount = formatAngkaInput(input);
+    updateCartSummary();
+  });
+
+  on(root, 'keydown', '#orderDisc', (e, input) => {
+    if (e.key === 'Backspace') {
+      const selStart = input.selectionStart;
+      const selEnd = input.selectionEnd;
+      if (selStart === selEnd && selStart > 0 && input.value[selStart - 1] === '.') {
+        e.preventDefault();
+        const val = input.value;
+        input.value = val.slice(0, selStart - 2) + val.slice(selStart);
+        input.setSelectionRange(selStart - 2, selStart - 2);
+        localOrderDiscount = formatAngkaInput(input);
+        updateCartSummary();
+      }
+    }
+  });
+
+  on(root, 'change', '#orderDisc', (e, input) => {
+    localOrderDiscount = parseAngka(input.value);
+    input.value = localOrderDiscount ? angka(localOrderDiscount) : '';
     renderCart(root);
+  });
+
+  on(root, 'click', '[data-disc]', (e, btn) => {
+    const val = Number(btn.dataset.disc) || 0;
+    localOrderDiscount = localOrderDiscount === val ? 0 : val;
+    const input = $('#orderDisc', root);
+    if (input) {
+      input.value = localOrderDiscount ? angka(localOrderDiscount) : '';
+    }
+    updateCartSummary();
+  });
+
+  on(root, 'click', '#btnOrderDiscClear', () => {
+    localOrderDiscount = 0;
+    const input = $('#orderDisc', root);
+    if (input) {
+      input.value = '';
+      input.focus();
+    }
+    updateCartSummary();
   });
 
   on(root, 'click', '#btnClear', async (e, btn) => {
